@@ -27,13 +27,22 @@ async def download_and_process_day(day: str, s3_client):
 
     logger.debug(f"Скачивание данных для {day} с URL: {url}")
     async with aiohttp.ClientSession() as session:
-        async with session.get(url, auth=auth) as response:
-            if response.status != 200:
-                raise ValueError(
-                    f"Ошибка Amplitude: {response.status} - {await response.text()}"
+        try:
+            async with session.get(url, auth=auth) as response:
+                if response.status != 200:
+                    text = await response.text()
+                    logger.error(
+                        f"Ошибка Amplitude для {day}: HTTP {response.status}, ответ: {text}"
+                    )
+                    # Если хочешь, можно вернуть None или пустой результат
+                    return None
+                zip_content = await response.read()
+                logger.debug(
+                    f"Данные для {day} скачаны (размер: {len(zip_content)} байт)"
                 )
-            zip_content = await response.read()
-    logger.debug(f"Данные для {day} скачаны (размер: {len(zip_content)} байт)")
+        except aiohttp.ClientError as e:
+            logger.error(f"Ошибка соединения с Amplitude для {day}: {e}")
+            return None
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         zip_path = os.path.join(tmp_dir, "amplitude.zip")
