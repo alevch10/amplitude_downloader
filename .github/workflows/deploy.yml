@@ -46,7 +46,7 @@ jobs:
             poetry config virtualenvs.in-project true
             poetry install --only main
 
-            # создаём .env через printf для сохранения форматирования
+            # создаём .env перед запуском приложения
             printf "AMPLITUDE_CLIENT_ID=%s\nAMPLITUDE_SECRET_ID=%s\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_DEFAULT_REGION=%s\nS3_ENDPOINT_URL=%s\nS3_BUCKET_NAME=%s\nDEBUG=%s\n" \
               "${{ secrets.AMPLITUDE_CLIENT_ID }}" \
               "${{ secrets.AMPLITUDE_SECRET_ID }}" \
@@ -57,7 +57,7 @@ jobs:
               "${{ secrets.S3_BUCKET_NAME }}" \
               "${{ secrets.DEBUG }}" > .env
 
-            # перезапуск systemd
+            # перезапуск systemd после создания .env
             sudo systemctl daemon-reload
             sudo systemctl restart fastapi-app
           EOF
