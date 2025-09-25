@@ -20,23 +20,55 @@ jobs:
 
       - name: Deploy to server
         run: |
+          # экспортируем секреты в Actions shell
+          export AMPLITUDE_CLIENT_ID="${{ secrets.AMPLITUDE_CLIENT_ID }}"
+          export AMPLITUDE_SECRET_ID="${{ secrets.AMPLITUDE_SECRET_ID }}"
+          export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
+          export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+          export AWS_DEFAULT_REGION="${{ secrets.AWS_DEFAULT_REGION }}"
+          export S3_ENDPOINT_URL="${{ secrets.S3_ENDPOINT_URL }}"
+          export S3_BUCKET_NAME="${{ secrets.S3_BUCKET_NAME }}"
+          export DEBUG="${{ secrets.DEBUG }}"
+
+          # подключаемся к серверу
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
             set -e
 
+            # создаём директорию проекта, если нет
+            mkdir -p "${{ secrets.APP_PATH }}"
             cd "${{ secrets.APP_PATH }}"
 
-            # создаём .env прямо в проекте
-            printf "AMPLITUDE_CLIENT_ID=%s\nAMPLITUDE_SECRET_ID=%s\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_DEFAULT_REGION=%s\nS3_ENDPOINT_URL=%s\nS3_BUCKET_NAME=%s\nDEBUG=%s\n" \
-              "${{ secrets.AMPLITUDE_CLIENT_ID }}" \
-              "${{ secrets.AMPLITUDE_SECRET_ID }}" \
-              "${{ secrets.AWS_ACCESS_KEY_ID }}" \
-              "${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
-              "${{ secrets.AWS_DEFAULT_REGION }}" \
-              "${{ secrets.S3_ENDPOINT_URL }}" \
-              "${{ secrets.S3_BUCKET_NAME }}" \
-              "${{ secrets.DEBUG }}" > .env
+            # клонируем или обновляем репозиторий
+            if [ ! -d ".git" ]; then
+              git clone git@github.com:alevch10/amplitude_downloader.git .
+            else
+              git fetch origin
+              git checkout master
+              git pull origin master
+            fi
 
-            # перезапуск приложения
+            # устанавливаем poetry, если ещё нет
+            if ! command -v poetry &> /dev/null; then
+              curl -sSL https://install.python-poetry.org | python3 -
+            fi
+            export PATH="$HOME/.local/bin:$PATH"
+
+            # создаём виртуальное окружение внутри проекта
+            poetry config virtualenvs.in-project true
+            poetry install --only main
+
+            # создаём .env с правильными значениями
+            printf "AMPLITUDE_CLIENT_ID=%s\nAMPLITUDE_SECRET_ID=%s\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_DEFAULT_REGION=%s\nS3_ENDPOINT_URL=%s\nS3_BUCKET_NAME=%s\nDEBUG=%s\n" \
+              "$AMPLITUDE_CLIENT_ID" \
+              "$AMPLITUDE_SECRET_ID" \
+              "$AWS_ACCESS_KEY_ID" \
+              "$AWS_SECRET_ACCESS_KEY" \
+              "$AWS_DEFAULT_REGION" \
+              "$S3_ENDPOINT_URL" \
+              "$S3_BUCKET_NAME" \
+              "$DEBUG" > .env
+
+            # перезапуск приложения через systemd
             sudo systemctl daemon-reload
             sudo systemctl restart fastapi-app
           EOF
