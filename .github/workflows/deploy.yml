@@ -20,14 +20,24 @@ jobs:
 
       - name: Deploy to server
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            set -e
+
             if ! command -v poetry &> /dev/null; then
               curl -sSL https://install.python-poetry.org | python3 -
-              export PATH="$HOME/.local/bin:$PATH"
             fi
-            
-            cd ${{ secrets.APP_PATH }}
-            git pull origin main
+            export PATH="$HOME/.local/bin:$PATH"
+
+            if [ ! -d "${{ secrets.APP_PATH }}" ]; then
+              git clone git@github.com:org/repo.git "${{ secrets.APP_PATH }}"
+            fi
+
+            cd "${{ secrets.APP_PATH }}"
+            git fetch origin
+            git checkout master
+            git pull origin master
+
             poetry install --only main 
+
             sudo systemctl restart fastapi-app
           EOF
