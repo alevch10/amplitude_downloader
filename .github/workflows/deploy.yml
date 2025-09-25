@@ -29,7 +29,7 @@ jobs:
             export PATH="$HOME/.local/bin:$PATH"
 
             if [ ! -d "${{ secrets.APP_PATH }}" ]; then
-              git clone git@github.com:org/repo.git "${{ secrets.APP_PATH }}"
+              git clone git@github.com:alevch10/amplitude_downloader.git "${{ secrets.APP_PATH }}"
             fi
 
             cd "${{ secrets.APP_PATH }}"
