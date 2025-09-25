@@ -61,7 +61,7 @@ async def run_processing(days: list):
     global current_processing, errors
     current_processing["processed"] = []
     semaphore = asyncio.Semaphore(
-        2
+        7
     )  # Лимит на 2 параллельных дня для избежания переполнения
     logger.info(f"Начата асинхронная обработка {len(days)} дней")
 

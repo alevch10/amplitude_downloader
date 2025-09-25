@@ -23,11 +23,17 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             set -e
 
+            # trust github
+            mkdir -p ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+            # poetry
             if ! command -v poetry &> /dev/null; then
               curl -sSL https://install.python-poetry.org | python3 -
             fi
             export PATH="$HOME/.local/bin:$PATH"
 
+            # проект
             if [ ! -d "${{ secrets.APP_PATH }}" ]; then
               git clone git@github.com:alevch10/amplitude_downloader.git "${{ secrets.APP_PATH }}"
             fi
@@ -37,7 +43,11 @@ jobs:
             git checkout master
             git pull origin master
 
-            poetry install --only main 
+            # фиксированное окружение внутри проекта
+            poetry config virtualenvs.in-project true
+            poetry install --only main
 
+            # перезапуск systemd
+            sudo systemctl daemon-reload
             sudo systemctl restart fastapi-app
           EOF
