@@ -66,7 +66,7 @@ async def download_day(day: str):
     return all_lines
 
 
-async def process_week(year: int, week: int, week_days: list, s3_client, semaphore_value: int = 14):
+async def process_week(year: int, week: int, week_days: list, s3_client, semaphore_value: int = 7):
     """Обрабатывает одну неделю с улучшенным управлением памятью."""
     logger.info(f"🚀 НАЧАЛО ОБРАБОТКИ НЕДЕЛИ {year}_week_{week} (дней: {len(week_days)})")
     semaphore = asyncio.Semaphore(semaphore_value)
