@@ -1,29 +1,51 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from s3_client import S3Client
-from amplitude import download_and_process_day, parse_dates
+from amplitude import process_week, parse_dates
 import asyncio
 import logging
+from logging.handlers import RotatingFileHandler
 import os
+import json
+import gc
+from datetime import datetime
 from dotenv import load_dotenv
+from collections import defaultdict
 
 load_dotenv()
 
-# Настройка logging
+# Настройка logging: консоль + файл с rotation
 DEBUG_MODE = os.getenv("DEBUG", "False").lower() == "true"
-logging.basicConfig(
-    level=logging.DEBUG if DEBUG_MODE else logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()],  # Вывод в консоль
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+)
+logger.addHandler(console_handler)
+
+# File handler with rotation
+file_handler = RotatingFileHandler("app.log", maxBytes=10 * 1024 * 1024, backupCount=5)
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+)
+logger.addHandler(file_handler)
+
+# Файл для persistence обработанных
+PROCESSED_FILE = "processed_history.json"
+if not os.path.exists(PROCESSED_FILE):
+    with open(PROCESSED_FILE, "w") as f:
+        json.dump([], f)  # Init как пустой list
 
 app = FastAPI()
 
 s3_client = S3Client()
 
-# In-memory мониторинг
-current_processing = {"date": None, "processed": []}
+# In-memory мониторинг (для runtime)
+current_processing = {"date": None, "week": None, "processed": []}
 errors = []
 
 
@@ -35,7 +57,8 @@ class DateRange(BaseModel):
 @app.get("/current_date")
 async def get_current_date():
     return {
-        "current": current_processing["date"],
+        "current_date": current_processing["date"],
+        "current_week": current_processing["week"],
         "processed": current_processing["processed"],
     }
 
@@ -60,32 +83,83 @@ async def process_dates(date_range: DateRange, background_tasks: BackgroundTasks
 async def run_processing(days: list):
     global current_processing, errors
     current_processing["processed"] = []
-    semaphore = asyncio.Semaphore(
-        7
-    )  # Лимит на 2 параллельных дня для избежания переполнения
-    logger.info(f"Начата асинхронная обработка {len(days)} дней")
+    errors = []  # Reset errors for this run
 
-    async def process_with_sem(day):
-        async with semaphore:
-            current_processing["date"] = day
-            logger.debug(f"Начата обработка дня: {day}")
-            try:
-                processed_day = await download_and_process_day(day, s3_client)
-                current_processing["processed"].append(processed_day)
-                logger.debug(f"Успешно обработан день: {day}")
-            except Exception as e:
-                error_msg = f"Ошибка для {day}: {e}"
-                errors.append(error_msg)
-                logger.error(error_msg)
-            finally:
-                if current_processing["date"] == day:
-                    current_processing["date"] = None
-                logger.debug(f"Завершена обработка дня: {day}")
+    logger.info(f"Начало обработки периода: {days[0]} - {days[-1]} (дней: {len(days)})")
 
-    await asyncio.gather(*(process_with_sem(day) for day in days))
+    # Группировка по неделям заранее
+    weeks = defaultdict(list)
+    for day in days:
+        dt = datetime.strptime(day, "%Y%m%d")
+        year, week, _ = dt.isocalendar()
+        weeks[(year, week)].append(day)
+    logger.info(f"Период разделён на {len(weeks)} недель")
+
+    processed_weeks = []
+    for (year, week), week_days in sorted(weeks.items()):  # По порядку
+        current_processing["week"] = f"{year}_week_{week}"
+        try:
+            processed_id, no_data_days = await process_week(
+                year, week, week_days, s3_client
+            )
+            processed_weeks.append(processed_id)
+            current_processing["processed"].append(processed_id)
+
+            # Persist после каждой недели
+            entry = {
+                "timestamp": datetime.now().isoformat(),
+                "week": processed_id,
+                "days": week_days,
+                "no_data_days": no_data_days,
+                "errors": False,
+            }
+            with open(PROCESSED_FILE, "r+") as f:
+                history = json.load(f)
+                history.append(entry)
+                f.seek(0)
+                json.dump(history, f, indent=4)
+            logger.info(
+                f"Обновлён processed_history.json: добавлена неделя {processed_id}"
+            )
+        except Exception as e:
+            error_msg = f"Ошибка для недели {year}_{week}: {str(e)}"
+            errors.append(error_msg)
+            logger.error(error_msg)
+            # Persist error entry
+            entry = {
+                "timestamp": datetime.now().isoformat(),
+                "week": f"{year}_week_{week}",
+                "days": week_days,
+                "no_data_days": [],  # Нет, т.к. ошибка
+                "errors": True,
+            }
+            with open(PROCESSED_FILE, "r+") as f:
+                history = json.load(f)
+                history.append(entry)
+                f.seek(0)
+                json.dump(history, f, indent=4)
+        finally:
+            current_processing["week"] = None
+            gc.collect()
+
     logger.info(
-        f"Обработка всех дней завершена. Обработано: {current_processing['processed']}, Ошибок: {len(errors)}"
+        f"Обработка завершена. Обработано недель: {len(processed_weeks)}, Ошибок: {len(errors)}"
     )
+
+
+@app.get("/logs")
+async def get_logs():
+    if os.path.exists("app.log"):
+        return FileResponse("app.log", filename="app.log", media_type="text/plain")
+    raise HTTPException(status_code=404, detail="Log file not found")
+
+
+@app.get("/processed")
+async def get_processed():
+    if os.path.exists(PROCESSED_FILE):
+        with open(PROCESSED_FILE, "r") as f:
+            return json.load(f)
+    return []
 
 
 if __name__ == "__main__":
