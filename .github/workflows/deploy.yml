@@ -55,6 +55,7 @@ jobs:
             # создаём виртуальное окружение внутри проекта
             /root/.local/bin/poetry config virtualenvs.in-project true
             /root/.local/bin/poetry install --only main
+            /root/.local/bin/poetry lock
 
             # создаём .env с секретами
             printf "AMPLITUDE_CLIENT_ID=%s\nAMPLITUDE_SECRET_ID=%s\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_DEFAULT_REGION=%s\nS3_ENDPOINT_URL=%s\nS3_BUCKET_NAME=%s\nDEBUG=%s\n" \
