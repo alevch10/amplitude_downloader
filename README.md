@@ -43,6 +43,14 @@ sudo ufw allow OpenSSH
 sudo ufw allow 8000       
 sudo ufw status
 ```
+Создать дирректорию и склонировать репозиторий:
+```
+mkdir code
+cd code
+git clone https://github.com/alevch10/amplitude_downloader.git
+cd
+```
+
 Настроить systemd:
 ```
 touch /etc/systemd/system/fastapi-app.service
