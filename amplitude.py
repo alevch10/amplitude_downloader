@@ -66,7 +66,7 @@ async def download_day(day: str):
     return all_lines
 
 
-async def process_week(year: int, week: int, week_days: list, s3_client, semaphore_value: int = 7):
+async def process_week(year: int, week: int, week_days: list, s3_client, semaphore_value: int = 3):
     """Обрабатывает одну неделю с улучшенным управлением памятью."""
     logger.info(f"🚀 НАЧАЛО ОБРАБОТКИ НЕДЕЛИ {year}_week_{week} (дней: {len(week_days)})")
     semaphore = asyncio.Semaphore(semaphore_value)
@@ -126,7 +126,7 @@ async def process_week(year: int, week: int, week_days: list, s3_client, semapho
     zip_size = len(zip_io.getvalue()) / 1024 / 1024
     logger.info(f"✅ ZIP создан, размер: {zip_size:.2f} MB")
 
-    s3_object_name = f"amplitude/web/{year}_week_{week}.zip"
+    s3_object_name = f"amplitude/mp/{year}_week_{week}.zip"
     logger.info(f"☁️ Начало загрузки в S3: {s3_object_name}")
     logger.debug(f"📤 Отправка в S3: {s3_object_name}, размер: {zip_size:.2f} MB")
     
