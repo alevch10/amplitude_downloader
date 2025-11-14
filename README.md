@@ -15,7 +15,7 @@ amplitude_loader/
 ssh-keyscan github.com >> ~/.ssh/known_hosts
 vim ~/.ssh/config
 ```
-Добавить: 
+Добавить ключ для доступа в GitLab на ВМ: 
 ```
 Host github.com
   HostName github.com
@@ -28,6 +28,8 @@ Host github.com
 ``` 
 ssh -T git@github.com
 ```
+
+Не забыть прописать публичную часть SSH ключа из пары, которая указана в GitHub в authorized_keys
 
 Открыть порт: 
 ```
