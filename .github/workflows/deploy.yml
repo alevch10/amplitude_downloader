@@ -20,7 +20,7 @@ jobs:
 
       - name: Deploy to server
         run: |
-          # Экспортируем секреты в Actions shell
+          # Устанавливаем переменные окружения
           export AMPLITUDE_CLIENT_ID="${{ secrets.AMPLITUDE_CLIENT_ID }}"
           export AMPLITUDE_SECRET_ID="${{ secrets.AMPLITUDE_SECRET_ID }}"
           export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
@@ -34,30 +34,32 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << EOF
             set -e
 
-            # создаём директорию проекта, если нет
+            # Создаём директорию проекта, если её нет
             mkdir -p "${{ secrets.APP_PATH }}"
             cd "${{ secrets.APP_PATH }}"
 
-            # клонируем или обновляем репозиторий
+            # Проверяем наличие репозитория и обновляем его
             if [ ! -d ".git" ]; then
               git clone git@github.com:alevch10/amplitude_downloader.git .
             else
               git fetch origin
+              git reset --hard HEAD
+              git clean -xdf
               git checkout master
               git pull origin master
             fi
 
-            # устанавливаем poetry, если ещё нет
-            if ! command -v /root/.local/bin/poetry &> /dev/null; then
+            # Установливаем Poetry, если оно отсутствует
+            if ! command -v /root/.local/bin/poetry &>/dev/null; then
               curl -sSL https://install.python-poetry.org | python3 -
             fi
 
-            # создаём виртуальное окружение внутри проекта
+            # Создаём виртуальное окружение внутри проекта
             /root/.local/bin/poetry config virtualenvs.in-project true
             /root/.local/bin/poetry install --only main
             /root/.local/bin/poetry lock
 
-            # создаём .env с секретами
+            # Создаём .env с секретами
             printf "AMPLITUDE_CLIENT_ID=%s\nAMPLITUDE_SECRET_ID=%s\nAWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\nAWS_DEFAULT_REGION=%s\nS3_ENDPOINT_URL=%s\nS3_BUCKET_NAME=%s\nDEBUG=%s\n" \
               "$AMPLITUDE_CLIENT_ID" \
               "$AMPLITUDE_SECRET_ID" \
@@ -68,7 +70,7 @@ jobs:
               "$S3_BUCKET_NAME" \
               "$DEBUG" > .env
 
-            # перезапуск приложения через systemd
-            sudo systemctl daemon-reload
-            sudo systemctl restart fastapi-app
+            # Перезапускаем приложение через systemd
+            sudo systemctl daemon-reload || true
+            sudo systemctl restart fastapi-app || true
           EOF
