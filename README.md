@@ -8,13 +8,6 @@ amplitude_loader/
 ├── .env             # Переменные
 └── README.md        # Описание
 ```
-
-Настроить SSH для GitHub Actions: 
-```
-touch ~/.ssh/github_actions 
-chmod 600 ~/.ssh/github_actions
-vim ~/.ssh/github_actions 
-```
 В открытый файл вставить приватный ключ 
 
 Задать использование ключа для хоста: 
